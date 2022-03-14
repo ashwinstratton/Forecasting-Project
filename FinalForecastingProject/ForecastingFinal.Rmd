@@ -1,0 +1,361 @@
+---
+title: 'Final Project'
+author: "Ashwin Stratton"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(fpp2)
+library(ggfortify)
+library(ggplot2)
+library(readxl)
+library(tidyr)
+library(reshape2)
+library(lubridate)
+library(urca)
+library(forecast)
+```
+
+``` {r, echo = FALSE}
+urlFile = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/Twitch%20Monthly%20Watchtime.xlsx%20-%20Sheet1%20(2).csv"
+twitchdata = read.csv(url(urlFile))
+urlFile2 = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/Twitch%20Monthly%20Watchtime.xlsx%20-%20Sheet2.csv"
+twitcholder = read.csv(url(urlFile2))
+urlFile3 = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/us.csv"
+coviddaily= read.csv(url(urlFile3))
+urlFile4 = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/monthlycases.csv"
+covidmonthly= read.csv(url(urlFile4))
+urlFile5 = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/twitchmonthly1.csv"
+twitchmonthly= read.csv(url(urlFile5))
+urlFile6 = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/PlanetFitnessData2021.csv"
+pelotonraw = read.csv(url(urlFile6))
+urlFile7 = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/PelotonData2021.csv"
+planetfitnessraw = read.csv(url(urlFile7))
+urlFile8 = "https://raw.githubusercontent.com/ashwinstratton/FinalProject/main/TravelDataFor2021.csv"
+traveldataraw = read.csv(url(urlFile8))
+
+twitchpeakviewers = twitchdata$Peak.Viewers
+twitchactivechannels = twitchdata$Active
+twitchhoursstreamed= twitchdata$Hours.Streamed
+twitchpeakchannels = twitchdata$Peak.Channels
+twitchgamesstreamed = twitchdata$Games.Streamed
+
+traveldata1 = traveldataraw$Annual.Vehicle.Distance.Traveled..Billion.Miles.
+
+twitchavgviewers = twitcholder$Avg..Conc.Viewers
+twitchavgchannels = twitcholder$Avg..Conc.Channels
+covidmonthlycases = covidmonthly$cases
+peloton1 = pelotonraw$Price
+planetfitness1 = planetfitnessraw$Price
+
+
+traveldatamiles = ts(traveldata1, frequency = 12)
+planetfitnessprice = ts(planetfitness1, frequency = 12)
+pelotonprice = ts(peloton1, frequency = 12)
+twitchmontlygamesstreamed = ts(twitchgamesstreamed, frequency = 12)
+peakviewers = ts(twitchpeakviewers,frequency = 12)
+activechannels = ts(twitchactivechannels,frequency = 12)
+twitchdata1 = ts(twitchpeakviewers,frequency = 12)
+twitchdata1 = ts(twitchpeakviewers,frequency = 12)
+avgchannels = ts(twitchavgchannels, frequency = 12)
+avgviewers = ts(twitchavgviewers, frequency = 12)
+
+
+```
+
+
+# What do we have?
+
+I started with a bunch of data on Twitch, Peloton, Planet Fitness, Travel Data, and Covid Data.
+Lets go!
+
+Lets plug in some of our time series, and see what we have.
+
+```{r}
+
+ggplot()+
+  geom_line() +
+  autolayer(peakviewers)+
+       xlab("2019-2021 Time Period")+
+       ylab("Amount of Peak Viewers")
+ggplot()+
+  geom_line() +
+  autolayer(ts(twitchgamesstreamed))+
+       xlab("2019-2021 Time Period")+
+       ylab("Amount Of Games")
+
+ggplot()+
+  autolayer(ts(covidmonthlycases))+
+       xlab("2019-2021 Time Period")+
+  ylab("Total Covid Cases")
+
+```
+
+
+``` {r, echo = FALSE, include = FALSE}
+ggplot()+
+  autolayer(traveldatamiles) #Travel Data In Cars In Miles (US)
+ggplot()+
+  autolayer(pelotonprice) #Peloton Stock Price
+ggplot()+
+  autolayer(planetfitnessprice) #Planet Fitness Stock Price
+ggplot()+
+  autolayer(ts(avgviewers)) #Twitch Average Viewers
+ggplot()+
+  autolayer(ts(twitchavgviewers)) #Twitch Average Viewers
+ggplot()+
+  autolayer(ts(traveldata1)) #Travel Data
+
+```
+
+I first plotted out most of my data to see what is happening, here is just a few. While I commented out the others as they presented no information that was relevant.
+
+# Future Scenarios
+
+So lets fit a linear model for Covid cases and Twitch Games Streamed.
+
+```{r}
+plot(ts(twitchgamesstreamed)~covidmonthlycases)
+mod = lm(twitchgamesstreamed~covidmonthlycases)
+mod$coefficients
+plot(twitchgamesstreamed~covidmonthlycases) + abline(mod$coefficients)
+modRes = ts(mod$residuals,frequency = 12)
+autoplot(modRes)
+ggAcf(modRes)
+checkresiduals(mod)
+```
+
+So we can see that as Covid cases go up, so does twitch games streamed. The linear fit looks fine to me, with the residuals containing some auto correlation. The residuals are stationary.
+
+```{r}
+ggseasonplot(modRes)
+modRes %>% ur.kpss() %>% summary()
+
+metaMod = auto.arima(modRes)
+summary(metaMod)
+checkresiduals(metaMod)
+```
+
+Combine them together assuming the covid monthly cases don't change over the next time period.
+
+```{r, echo = FALSE, include = FALSE}
+fcastA = forecast(mod,newdata = data.frame(covidmonthlycases = c(1390096936
+,1390096936
+,1390096936
+,1390096936
+,1390096936
+,1390096936
+,1390096936
+)),h = 12)
+fcast1 = ts(c(fcastA$fitted,fcastA$mean),frequency = 12)
+ggplot() +
+  autolayer(ts(twitchgamesstreamed)) + 
+  autolayer(fcast1)
+
+fcastB = forecast(metaMod,h = 12)
+fcast2 = ts(c(fcastB$fitted,fcastB$mean),frequency = 12)
+```
+
+``` {r}
+ggplot() +
+  autolayer(modRes) + 
+  autolayer(fcast2)
+```
+
+```{r, echo = FALSE, include = FALSE}
+fcastSum = fcast1 + fcast2
+ggplot() +
+  autolayer(ts(twitchgamesstreamed)) + 
+  autolayer(fcastSum)
+```
+
+```{r, echo = FALSE, include = FALSE}
+(mod$fitted.values - twitchgamesstreamed)^2 %>% mean() %>% sqrt()
+(fcastA$fitted + fcastB$fitted - twitchgamesstreamed)^2 %>% mean() %>% sqrt()
+```
+
+This is a huge improvement. Check the residuals to see!
+
+```{r}
+totalRes = -(fcastA$fitted + fcastB$fitted - twitchgamesstreamed)
+autoplot(totalRes)
+hist(totalRes)
+ggAcf(totalRes)
+checkresiduals(totalRes)
+```
+
+No Auto Correlation, Constant Variance, and Normal Results. Nothing jumps outside of the 95% bounds on the ACF, so we are looking good. Granted its a smaller dataset, it's the best thing we could access.
+
+# Holt's Method
+
+Let's try HOLT's Method really quick and see what we get.
+
+```{r, echo = FALSE}
+  autoplot(ts(twitchgamesstreamed)) +
+  autolayer(holt(twitchgamesstreamed)) 
+
+  autoplot(ts(covidmonthlycases)) +
+  autolayer(holt(covidmonthlycases)) 
+
+```
+
+Interesting that covid cases 95% interval bounds open up alot more the further out we predict. Alright, lets move on.
+
+
+
+Lets plug in a few more categories and see what we have for predictability from other data inside of a GGPairs.
+
+
+``` {r}
+allData = data.frame(twitchgamesstreamed,twitchhoursstreamed,twitchpeakviewers,covidmonthlycases,pelotonprice,planetfitnessprice,traveldatamiles)
+GGally::ggpairs(allData[,1:7])
+```
+
+Things that stick out for me here:
+
+Twitch Games Streamed and Hours Streamed
+Twitch Games Streamed and Monthly Covid Cases (0.895)
+Twitch Games Streamed and Peloton Price
+Covid Monthly Cases and Travel Data Miles
+
+Obviously, we are mainly focusing on Twitch Games Streamed and what correlates there.
+
+We gathered a ton of things from our GGPairs, lets start to apply them below.
+
+
+First, I am going to throw together some ARIMA forecasts on my Games Streamed, and Peak Viewers categories as they interested me the most.
+
+```{r, echo = FALSE, include = FALSE}
+twitchTS = ts(twitchdata)
+plot(twitchTS[,1:8])
+arima_fit1 = auto.arima(twitchTS[,8])
+arima_fit2 = auto.arima(twitchTS[,3])
+arima_forecast1 = forecast(arima_fit1, h = 10)
+arima_forecast2 = forecast(arima_fit2, h = 10)
+plot(arima_forecast1)
+plot(arima_forecast2)
+accuracy(arima_forecast1)
+accuracy(arima_forecast2)
+```
+
+I first plotted the multivariate time series. Picked the two of interest, and applied the ARIMA to them followed by the forecast. We can see from the forecasts, that the predictions are within 500 for the first forecast on games streamed, which would make sense. 
+
+```{r}
+mod1 = auto.arima(twitchgamesstreamed,xreg = as.matrix(allData[,2:5]))
+mod2 = auto.arima(twitchgamesstreamed,xreg = covidmonthlycases)
+ggplot() + 
+  autolayer(ts(twitchgamesstreamed)) + 
+  autolayer(mod1$fitted,series = "Categories From GGPairs") + 
+  autolayer(mod2$fitted,series = "Covid Cases") 
+accuracy(mod1)
+summary(mod1)
+summary(mod2)
+
+```
+
+So here I used the Twitch games streamed as our baseline. As I will be using it for anything moving forward, it appears to be a valid indicator of Twitch's timeline. 
+We ran two different models of Auto Arima. As we know, the RMSE for models with multiple regressors will tend to hold a lower RMSE, however we go back and we see the AIC, and AICc are also higher as well. This signifies that the additional complexity is actually worth it. Although, not by a whole lot. We generally have strong correlations between other Twitch categories like hours streamed, peak viewers, and peak channels, as they all correlate. However, this does give us the indication that Twitch streamed games follows a close correlation with Covid cases.
+
+Let's try some other variables that didn't seem to correlate as much in the GGPairs. Looking at Planet Fitness, it doesn't seem to have much correlation with any of the categories. Lets see...
+
+```{r}
+mod1 = auto.arima(twitchgamesstreamed,xreg = as.matrix(allData[,4]))
+mod2 = auto.arima(twitchgamesstreamed,xreg = as.matrix(allData[,6]))
+mod3 = auto.arima(twitchgamesstreamed,xreg = as.matrix(allData[,c(4,6)]))
+ggplot() + 
+  autolayer(ts(twitchgamesstreamed)) + 
+  autolayer(mod1$fitted,series = "Covid Cases") + 
+  autolayer(mod2$fitted,series = "Planet Fitness Stock Price") + 
+  autolayer(mod3$fitted,series = "Covid Cases + Planet Fitness Stock Price") 
+  
+summary(mod1)
+summary(mod2)
+summary(mod3)
+```
+
+# Wow!
+
+Surprisingly Planet Fitness overwhelmed me and is surprisingly sturdy when predicting twitch games streamed. The RMSE and AIC is lower on this than combined and Covid Cases solo. Seemingly a good predictor and you can see that the blue line on the graph is very similar to the purple line of twitch games streamed. Pretty crazy how that worked out.
+
+```{r}
+mod1 = auto.arima(twitchgamesstreamed,xreg = as.matrix(allData[,3]))
+mod2 = auto.arima(twitchgamesstreamed,xreg = as.matrix(allData[,7]))
+mod3 = auto.arima(twitchgamesstreamed,xreg = as.matrix(allData[,5]))
+ggplot() + 
+  autolayer(ts(twitchgamesstreamed)) + 
+  autolayer(mod1$fitted,series = "Twitch Peak Viewers") + 
+  autolayer(mod2$fitted,series = "Travel Data In Miles") + 
+  autolayer(mod3$fitted,series = "Peloton Price") 
+  
+summary(mod1)
+summary(mod2)
+summary(mod3)
+
+checkresiduals(mod1$fitted)
+checkresiduals(mod2$fitted)
+checkresiduals(mod3$fitted)
+
+autoplot(forecast(mod1$fitted))
+  autoplot(forecast(mod2$fitted))
+  autoplot(forecast(mod3$fitted))
+```
+
+Obviously we can see that the travel data actually leads in RMSE. But sitting in the 300's for RMSE is also not that impressive. With the corresponding ACF's telling us what we already knew. While it is certainly a predictive factor, I wonder if it really means anything in the grand scheme. I also forecasted ahead, and we received vastly similar results. I do believe from this we can concur that these variables do have some sort of predictive power. If twitch is trending upward, its likely that these variables are as well, and vice versa.
+
+Now lets try some scenario forecasting. Using Peloton Stock Price as an example, and taking the average of 84. Assuming that the Peloton Price doesn't see a ton of movement in the near future.
+
+``` {r, echo = FALSE, include = FALSE}
+PelotonMod = pelotonprice - 90
+PelotonMod[which(PelotonMod < 0)] = 0
+PelotonMod
+mod = auto.arima(twitchgamesstreamed,xreg = PelotonMod)
+mod
+```
+
+
+#Feature Engineering
+
+We can take this and now present some fake data testing models. Forecast A is flucutating, Forecast B is slowly increasing, and Forecast C is linear. Lets see....
+
+```{r}
+function84 = function(data)
+{
+  data = data - 90
+  data[which(data < 0)] = 0
+  return(data)
+}
+fcastA = forecast(mod,xreg = function84(c(86, 85, 88 , 87, 76, 86, 89)))
+fcastB = forecast(mod,xreg = function84(c(85, 95, 102, 130, 145, 150, 167)))
+fcastC = forecast(mod,xreg = function84(rep(83.8,7)))
+ggplot() + 
+  autolayer(ts(twitchgamesstreamed), series = "Games Streamed") + 
+  autolayer(fcastA$mean,series = "Fluctuates Around 84") + 
+  autolayer(fcastB$mean,series = "Spikes Up") + 
+  autolayer(fcastC$mean,series = "Stays Level") 
+
+accuracy(fcastA)
+accuracy(fcastB)
+accuracy(fcastC)
+```
+
+From the accuracy and results here, I assume that auto arima is guessing that the price of peloton won't correlate with the games streamed enough to make a forecast other than the projected values. So essentially if Pelotons price went up or down, it would not change the twitch projection directly.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+#Final Thoughts
+
+Through analysis we learned that multiple factors have predictive power over Twitch Games Streamed, but mainly Covid Cases, and Surprisingly Stock prices of planet fitness and peloton also predict pretty well. However, Twitch's spike in all categories is mostly in part because of Covid and people being home. Yet it was still worth exploring.
+
+We also learned that Covid certainly had some predictive power on many rises and falls in the world. This is likely for a majority of reasons, but a global pandemic traditionally has predictive power. Interesting to say the least, that gym stock, travel in cars in miles, and covid cases all can and will predict twitch statistics.
+
+
+# Sources
+
+Peloton and Planet Fitness Data = "https://finance.yahoo.com/"
+Covid Data = "https://www.kaggle.com/imdevskp/corona-virus-report"
+Twitch Data = "https://twitchtracker.com/statistics"
+Travel Data = "https://www.fhwa.dot.gov/policyinformation/statistics.cfm"
+
