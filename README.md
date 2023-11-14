@@ -1,4 +1,4 @@
-# Forecasting-Project
+# COVID vs Twitch
 Final Project from Forecasting
 
 Assignment :
